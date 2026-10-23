@@ -1,0 +1,119 @@
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const Jsoning = require('jsoning');
+
+// Βάσεις δεδομένων για Whitelist και Scripts του ELGHUB
+const whitelistDB = new Jsoning('whitelist.json');
+const scriptsDB = new Jsoning('scripts.json');
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
+});
+
+// ΒΑΛΕ ΤΟ DISCORD ID ΣΟΥ ΕΔΩ:
+const OWNER_ID = '1424359683916959864'; 
+const PREFIX = '!';
+
+client.once('ready', () => {
+    console.log(`🤖 ELGHUB Bot is online as ${client.user.tag}!`);
+});
+
+client.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.content.startsWith(PREFIX)) return;
+
+    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
+
+    // ==========================================
+    // 👑 ADMIN COMMANDS (ELGHUB Management)
+    // ==========================================
+
+    // 1. Εντολή Whitelist: !whitelist @User
+    if (command === 'whitelist') {
+        if (message.author.id !== OWNER_ID) {
+            return message.reply('❌ Δεν έχεις δικαίωμα να χρησιμοποιήσεις αυτή την εντολή!');
+        }
+
+        const target = message.mentions.users.first() || await client.users.fetch(args[0]).catch(() => null);
+        if (!target) return message.reply('⚠️ Παρακαλώ κάνε mention έναν χρήστη ή βάλε το ID του. (π.χ. `!whitelist @User`)');
+
+        await whitelistDB.set(target.id, true);
+        
+        const embed = new EmbedBuilder()
+            .setColor('#5865F2')
+            .setTitle('🛡️ ELGHUB - Whitelist Added')
+            .setDescription(`Ο χρήστης **${target.tag}** μπήκε επιτυχώς στο Whitelist του **ELGHUB**!`)
+            .setTimestamp();
+        
+        return message.reply({ embeds: [embed] });
+    }
+
+    // 2. Εντολή Unwhitelist: !unwhitelist @User
+    if (command === 'unwhitelist') {
+        if (message.author.id !== OWNER_ID) return;
+
+        const target = message.mentions.users.first() || await client.users.fetch(args[0]).catch(() => null);
+        if (!target) return message.reply('⚠️ Παρακαλώ κάνε mention έναν χρήστη.');
+
+        await whitelistDB.delete(target.id);
+        
+        return message.reply(`❌ Ο χρήστης **${target.tag}** αφαιρέθηκε από το Whitelist του **ELGHUB**.`);
+    }
+
+    // 3. Προσθήκη Script: !addscript <όνομα> <κώδικας>
+    if (command === 'addscript') {
+        if (message.author.id !== OWNER_ID) return;
+
+        const scriptName = args[0];
+        const scriptContent = args.slice(1).join(' ');
+
+        if (!scriptName || !scriptContent) {
+            return message.reply('⚠️ Χρήση: `!addscript <όνομα_script> <κώδικας_ή_link>`');
+        }
+
+        await scriptsDB.set(scriptName.toLowerCase(), scriptContent);
+        return message.reply(`📦 Το script **${scriptName}** αποθηκεύτηκε επιτυχώς στο **ELGHUB**!`);
+    }
+
+    // ==========================================
+    // 👤 USER COMMANDS (ELGHUB Members)
+    // ==========================================
+
+    // 4. Λήψη Script: !getscript <όνομα>
+    if (command === 'getscript') {
+        const isWhitelisted = await whitelistDB.get(message.author.id);
+
+        if (!isWhitelisted && message.author.id !== OWNER_ID) {
+            return message.reply('🔒 **ELGHUB Access Denied:** Δεν είσαι στο Whitelist! Επικοινώνησε με τον Owner.');
+        }
+
+        const scriptName = args[0]?.toLowerCase();
+        if (!scriptName) return message.reply('⚠️ Χρήση: `!getscript <όνομα_script>`');
+
+        const scriptData = await scriptsDB.get(scriptName);
+        if (!scriptData) return message.reply('❌ Αυτό το script δεν υπάρχει στο ELGHUB!');
+
+        // Στέλνει το script σε ΠΡΟΣΩΠΙΚΟ ΜΗΝΥΜΑ (DM)
+        try {
+            await message.author.send(`🚀 **ELGHUB Script: ${scriptName}**\n\`\`\`lua\n${scriptData}\n\`\`\``);
+            message.reply('📩 Το script στάλθηκε στα προσωπικά σου μηνύματα (DMs)!');
+        } catch (err) {
+            message.reply('❌ Τα DMs σου είναι κλειστά! Άνοιξέ τα για να σου στείλω το script.');
+        }
+    }
+
+    // 5. Έλεγχος Status: !status
+    if (command === 'status') {
+        const isWhitelisted = await whitelistDB.get(message.author.id);
+        if (isWhitelisted || message.author.id === OWNER_ID) {
+            return message.reply('✅ Είσαι **Whitelisted** στο **ELGHUB**!');
+        } else {
+            return message.reply('❌ Δεν είσαι **Whitelisted** στο **ELGHUB**.');
+        }
+    }
+});
+
+client.login(process.env.DISCORD_TOKEN);
